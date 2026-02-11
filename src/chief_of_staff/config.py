@@ -24,9 +24,20 @@ class Settings(BaseSettings):
     google_credentials_path: str = "./credentials.json"
     google_token_path: str = "./token.json"
 
+    # Zoom (Server-to-Server OAuth)
+    zoom_account_id: str = ""
+    zoom_client_id: str = ""
+    zoom_client_secret: str = ""
+    zoom_webhook_secret: str = ""
+    zoom_auto_record_internal: bool = True
+
+    # Recall.ai (meeting bot)
+    recall_api_key: str = ""
+
     # Agent config
     chief_email: str = ""
     founder_phone_numbers: list[str] = []
+    webhook_base_url: str = "http://localhost:8000"
 
     # Server
     host: str = "0.0.0.0"

@@ -1,11 +1,10 @@
 """Meeting recorder/transcript ingestion — Zoom and other meeting platforms.
 
-This module supports ingesting meeting transcripts from:
-1. Manual upload (paste transcript text)
-2. Zoom cloud recordings (via Zoom API — future)
-3. Recall.ai bot recordings (future)
-
-For now, provides a manual ingestion endpoint.
+This module provides manual ingestion for meeting transcripts.
+For automated ingestion, see:
+- zoom.py: Zoom cloud recording transcript puller
+- zoom_client.py: Zoom API client (OAuth, recordings, users)
+- recall_bot.py: Recall.ai meeting bot (auto-join, record, transcribe)
 """
 
 from __future__ import annotations

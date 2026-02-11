@@ -82,6 +82,39 @@ TOOL_DEFINITIONS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "search_meetings",
+        "description": "Search meeting transcripts (Zoom recordings, Recall.ai bot transcripts). Use this to find what was discussed in internal meetings.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query — topic, person name, or keyword from the meeting",
+                },
+                "limit": {"type": "integer", "description": "Max results (default 10)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "send_meeting_bot",
+        "description": "Send the Chief of Staff meeting bot to join and record a Zoom/Google Meet/Teams meeting. The bot will transcribe the meeting and ingest it into the knowledge base automatically.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meeting_url": {
+                    "type": "string",
+                    "description": "The meeting join URL (e.g., https://zoom.us/j/123456)",
+                },
+                "meeting_title": {
+                    "type": "string",
+                    "description": "Optional title/description for the meeting",
+                },
+            },
+            "required": ["meeting_url"],
+        },
+    },
 ]
 
 
@@ -127,6 +160,30 @@ async def execute_tool(name: str, args: dict[str, Any]) -> str:
         if not docs:
             return "No emails found matching that query."
         return json.dumps(docs, indent=2, default=str)
+
+    elif name == "search_meetings":
+        results = knowledge_store.search(
+            query=args["query"],
+            n_results=args.get("limit", 10),
+            source_filter="meeting",
+        )
+        if not results:
+            return "No meeting transcripts found matching that query."
+        formatted = []
+        for r in results:
+            title = r["metadata"].get("title", "untitled")
+            platform = r["metadata"].get("platform", "unknown")
+            formatted.append(f"[{platform}: {title}]\n{r['text'][:500]}")
+        return "\n---\n".join(formatted)
+
+    elif name == "send_meeting_bot":
+        from chief_of_staff.ingestion.recall_bot import dispatch_bot
+        result = await dispatch_bot(
+            meeting_url=args["meeting_url"],
+            meeting_title=args.get("meeting_title", ""),
+        )
+        bot_id = result.get("id", "unknown")
+        return f"Meeting bot dispatched (ID: {bot_id}). It will join the meeting, record, and transcribe automatically. I'll notify you when the transcript is ready."
 
     else:
         return f"Unknown tool: {name}"

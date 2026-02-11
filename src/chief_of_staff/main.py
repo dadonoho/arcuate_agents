@@ -11,6 +11,8 @@ from chief_of_staff.config import settings
 from chief_of_staff.knowledge.database import init_db
 from chief_of_staff.webhooks.twilio import router as twilio_router
 from chief_of_staff.webhooks.gmail import router as gmail_router
+from chief_of_staff.webhooks.zoom import router as zoom_router
+from chief_of_staff.webhooks.recall import router as recall_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +41,8 @@ app = FastAPI(
 # Register webhook routers
 app.include_router(twilio_router)
 app.include_router(gmail_router)
+app.include_router(zoom_router)
+app.include_router(recall_router)
 
 
 @app.get("/health")
@@ -107,6 +111,50 @@ async def ingest_meeting(
         attendees=attendees,
         platform=platform,
     )
+    return {"doc_id": doc_id}
+
+
+@app.post("/api/ingest/zoom")
+async def trigger_zoom_ingestion(days_back: int = 30, user_emails: list[str] | None = None):
+    """Manually trigger Zoom cloud recording ingestion."""
+    from chief_of_staff.ingestion.zoom import fetch_and_ingest_recordings
+
+    count = await fetch_and_ingest_recordings(days_back=days_back, user_emails=user_emails)
+    return {"zoom_recordings_ingested": count}
+
+
+@app.post("/api/meetings/send-bot")
+async def send_meeting_bot(
+    meeting_url: str,
+    meeting_title: str = "",
+    bot_name: str = "Arcuate Chief of Staff",
+):
+    """Send a Recall.ai bot to join and record a meeting."""
+    from chief_of_staff.ingestion.recall_bot import dispatch_bot
+
+    result = await dispatch_bot(
+        meeting_url=meeting_url,
+        meeting_title=meeting_title,
+        bot_name=bot_name,
+    )
+    return {"bot_id": result.get("id"), "status": "dispatched"}
+
+
+@app.get("/api/meetings/bots")
+async def list_meeting_bots(limit: int = 20):
+    """List recently deployed meeting bots."""
+    from chief_of_staff.ingestion.recall_bot import list_bots
+
+    bots = await list_bots(limit=limit)
+    return {"bots": bots}
+
+
+@app.post("/api/meetings/bots/{bot_id}/ingest")
+async def ingest_bot_transcript_endpoint(bot_id: str, meeting_title: str = ""):
+    """Manually trigger transcript ingestion for a specific bot."""
+    from chief_of_staff.ingestion.recall_bot import ingest_bot_transcript
+
+    doc_id = await ingest_bot_transcript(bot_id=bot_id, meeting_title=meeting_title)
     return {"doc_id": doc_id}
 
 

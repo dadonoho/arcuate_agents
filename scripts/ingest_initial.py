@@ -5,12 +5,14 @@ Run this after setting up credentials to backfill:
 - All emails from the Chief of Staff inbox
 - All Google Docs from the shared drive
 - All ElevenLabs call transcripts
+- All Zoom cloud recording transcripts
 
 Usage:
     python scripts/ingest_initial.py
     python scripts/ingest_initial.py --emails-only
     python scripts/ingest_initial.py --docs-only
     python scripts/ingest_initial.py --transcripts-only
+    python scripts/ingest_initial.py --zoom-only
 """
 
 import argparse
@@ -36,16 +38,18 @@ async def main():
     parser.add_argument("--emails-only", action="store_true")
     parser.add_argument("--docs-only", action="store_true")
     parser.add_argument("--transcripts-only", action="store_true")
+    parser.add_argument("--zoom-only", action="store_true")
     parser.add_argument("--max-emails", type=int, default=500)
     parser.add_argument("--max-docs", type=int, default=100)
     parser.add_argument("--max-transcripts", type=int, default=200)
+    parser.add_argument("--zoom-days-back", type=int, default=90)
     parser.add_argument("--docs-folder-id", type=str, default=None)
     args = parser.parse_args()
 
     # Initialize database
     init_db()
 
-    do_all = not (args.emails_only or args.docs_only or args.transcripts_only)
+    do_all = not (args.emails_only or args.docs_only or args.transcripts_only or args.zoom_only)
 
     if do_all or args.emails_only:
         logger.info("=== Ingesting emails ===")
@@ -70,6 +74,13 @@ async def main():
 
         count = await fetch_and_ingest_transcripts(limit=args.max_transcripts)
         logger.info(f"Transcripts ingested: {count}")
+
+    if do_all or args.zoom_only:
+        logger.info("=== Ingesting Zoom cloud recordings ===")
+        from chief_of_staff.ingestion.zoom import fetch_and_ingest_recordings
+
+        count = await fetch_and_ingest_recordings(days_back=args.zoom_days_back)
+        logger.info(f"Zoom recordings ingested: {count}")
 
     logger.info("=== Initial ingestion complete ===")
 
