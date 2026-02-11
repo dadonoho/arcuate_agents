@@ -30,7 +30,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "send_sms",
-        "description": "Send an SMS text message to a phone number. Use this to communicate with founders or contacts.",
+        "description": "Send a WhatsApp message (or SMS) to a phone number. Use this to communicate with founders or contacts.",
         "input_schema": {
             "type": "object",
             "properties": {

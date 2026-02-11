@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # Agent config
     chief_email: str = ""
     founder_phone_numbers: list[str] = []
+    messaging_channel: str = "whatsapp"  # "sms" or "whatsapp"
     webhook_base_url: str = "http://localhost:8000"
 
     # Server
