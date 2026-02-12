@@ -27,6 +27,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Arcuate Chief of Staff Agent...")
     init_db()
     logger.info("Database initialized")
+
+    # Start background ingestion scheduler
+    from chief_of_staff.ingestion.scheduler import start_scheduler, run_sync
+    start_scheduler()
+    logger.info("Background scheduler started")
+
+    # Run an initial sync on startup
+    import asyncio
+    asyncio.create_task(run_sync())
+
     yield
     logger.info("Shutting down Chief of Staff Agent")
 

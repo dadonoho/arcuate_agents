@@ -31,7 +31,6 @@ async def fetch_and_ingest_transcripts(limit: int = 50) -> int:
         resp = await client.get(
             f"{BASE_URL}/convai/conversations",
             headers=headers,
-            params={"page_size": limit},
         )
         resp.raise_for_status()
         conversations = resp.json().get("conversations", [])

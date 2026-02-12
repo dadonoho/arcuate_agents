@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     # Google
     google_credentials_path: str = "./credentials.json"
     google_token_path: str = "./token.json"
+    google_credentials_json: str = ""  # JSON string (for Railway/Docker — overrides file)
+    google_token_json: str = ""  # JSON string (for Railway/Docker — overrides file)
 
     # Zoom (Server-to-Server OAuth)
     zoom_account_id: str = ""
