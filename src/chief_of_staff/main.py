@@ -28,18 +28,25 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
-    # Start background ingestion scheduler
-    from chief_of_staff.ingestion.scheduler import start_scheduler, run_sync
+    # Fix SSL certs on macOS (not needed on Linux/Railway)
+    try:
+        import certifi
+        import os
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    except ImportError:
+        pass
+
+    import asyncio
+
+    # Start background ingestion scheduler (hourly re-sync, non-blocking)
+    from chief_of_staff.ingestion.scheduler import start_scheduler
     start_scheduler()
     logger.info("Background scheduler started")
-
-    # Run an initial sync on startup
-    import asyncio
-    asyncio.create_task(run_sync())
 
     # Start Discord bot if configured
     from chief_of_staff.communication.discord_bot import start_discord_bot
     asyncio.create_task(start_discord_bot())
+    logger.info("Discord bot task started")
 
     yield
     logger.info("Shutting down Chief of Staff Agent")

@@ -14,6 +14,10 @@ SYNC_INTERVAL_SECONDS = 3600  # 1 hour
 
 async def _sync_loop():
     """Runs forever, syncing all sources on an interval."""
+    # Wait before first sync to let the server start up
+    await asyncio.sleep(60)
+    await run_sync()
+
     while True:
         await asyncio.sleep(SYNC_INTERVAL_SECONDS)
         logger.info("=== Scheduled sync starting ===")
@@ -21,24 +25,26 @@ async def _sync_loop():
 
 
 async def run_sync():
-    """Run a single sync of all configured sources."""
-    # Emails
+    """Run a single sync of all configured sources. Uses threads to avoid blocking."""
+    loop = asyncio.get_event_loop()
+
+    # Emails (sync function — run in thread)
     try:
         from chief_of_staff.ingestion.gmail import fetch_and_ingest_emails
-        count = fetch_and_ingest_emails(max_results=100)
+        count = await loop.run_in_executor(None, lambda: fetch_and_ingest_emails(max_results=100))
         logger.info(f"Synced {count} emails")
     except Exception as e:
         logger.error(f"Email sync failed: {e}")
 
-    # Google Docs
+    # Google Docs (sync function — run in thread)
     try:
         from chief_of_staff.ingestion.gdocs import fetch_and_ingest_docs
-        count = fetch_and_ingest_docs(max_results=50)
+        count = await loop.run_in_executor(None, lambda: fetch_and_ingest_docs(max_results=50))
         logger.info(f"Synced {count} docs")
     except Exception as e:
         logger.error(f"Docs sync failed: {e}")
 
-    # ElevenLabs
+    # ElevenLabs (already async)
     try:
         from chief_of_staff.ingestion.elevenlabs import fetch_and_ingest_transcripts
         count = await fetch_and_ingest_transcripts(limit=50)
