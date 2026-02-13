@@ -37,6 +37,10 @@ async def lifespan(app: FastAPI):
     import asyncio
     asyncio.create_task(run_sync())
 
+    # Start Discord bot if configured
+    from chief_of_staff.communication.discord_bot import start_discord_bot
+    asyncio.create_task(start_discord_bot())
+
     yield
     logger.info("Shutting down Chief of Staff Agent")
 

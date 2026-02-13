@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # Recall.ai (meeting bot)
     recall_api_key: str = ""
 
+    # Discord
+    discord_bot_token: str = ""
+
     # Agent config
     chief_email: str = ""
     founder_phone_numbers: list[str] = []
