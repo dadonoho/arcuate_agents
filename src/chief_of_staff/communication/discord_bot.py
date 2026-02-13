@@ -13,6 +13,8 @@ from chief_of_staff.config import settings
 logger = logging.getLogger(__name__)
 
 
+
+
 class ChiefOfStaffBot(discord.Client):
     """Discord bot that connects to the Claude-powered Chief of Staff agent."""
 
@@ -44,7 +46,8 @@ class ChiefOfStaffBot(discord.Client):
         # Respond to DMs or messages that mention the bot or are in a designated channel
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mentioned = self.user in message.mentions
-        is_agent_channel = message.channel.name == "chief-of-staff" if hasattr(message.channel, "name") else False
+        channel_name = getattr(message.channel, "name", "")
+        is_agent_channel = channel_name in settings.discord_channels
 
         if not (is_dm or is_mentioned or is_agent_channel):
             return

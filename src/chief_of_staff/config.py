@@ -38,6 +38,7 @@ class Settings(BaseSettings):
 
     # Discord
     discord_bot_token: str = ""
+    discord_channels: list[str] = ["chief-of-staff", "arcuatechat"]  # bot responds in these channels + DMs + @mentions
 
     # Agent config
     chief_email: str = ""
