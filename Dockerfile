@@ -7,13 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
+# Copy source and install
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-
-# Copy source
 COPY src/ src/
 COPY scripts/ scripts/
+RUN pip install --no-cache-dir .
 
 # Data directories (Railway volume mounts here)
 RUN mkdir -p /app/data
