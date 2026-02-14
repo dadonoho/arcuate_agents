@@ -15,6 +15,6 @@ RUN mkdir -p /app/data /tmp
 ENV CHROMA_PERSIST_DIR=/app/data/chroma_data
 ENV SQLITE_DB_PATH=/app/data/chief_of_staff.db
 
-EXPOSE ${PORT:-8000}
+EXPOSE 8000
 
 CMD uvicorn chief_of_staff.main:app --host 0.0.0.0 --port ${PORT:-8000}
