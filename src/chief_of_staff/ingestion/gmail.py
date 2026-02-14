@@ -13,22 +13,29 @@ from chief_of_staff.knowledge.store import ingest
 logger = logging.getLogger(__name__)
 
 
-def fetch_and_ingest_emails(max_results: int = 100, query: str = "") -> int:
+def fetch_and_ingest_emails(max_results: int = 100, query: str = "", newer_than: str = "") -> int:
     """Fetch recent emails and ingest them into the knowledge base.
 
     Args:
         max_results: Maximum number of emails to fetch.
         query: Gmail search query (e.g., 'from:client@example.com').
+        newer_than: Gmail newer_than filter (e.g., '1d' for last day, '2h' for last 2 hours).
 
     Returns:
         Number of emails ingested.
     """
     service = get_gmail_service()
 
+    full_query = query
+    if newer_than:
+        full_query = f"newer_than:{newer_than} {query}".strip()
+
+    logger.info(f"Fetching emails with query: '{full_query}', max_results={max_results}")
+
     results = service.users().messages().list(
         userId="me",
         maxResults=max_results,
-        q=query,
+        q=full_query,
     ).execute()
 
     messages = results.get("messages", [])

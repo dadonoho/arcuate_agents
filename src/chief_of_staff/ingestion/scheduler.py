@@ -31,7 +31,9 @@ async def run_sync():
     # Emails (sync function — run in thread)
     try:
         from chief_of_staff.ingestion.gmail import fetch_and_ingest_emails
-        count = await loop.run_in_executor(None, lambda: fetch_and_ingest_emails(max_results=100))
+        count = await loop.run_in_executor(
+            None, lambda: fetch_and_ingest_emails(max_results=100, newer_than="1d")
+        )
         logger.info(f"Synced {count} emails")
     except Exception as e:
         logger.error(f"Email sync failed: {e}")
