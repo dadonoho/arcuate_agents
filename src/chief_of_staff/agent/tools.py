@@ -7,6 +7,15 @@ from typing import Any
 
 from chief_of_staff.knowledge import store as knowledge_store
 
+# Server-side tools (handled by Anthropic automatically)
+SERVER_TOOLS = [
+    {
+        "type": "web_search_20250305",
+        "name": "web_search",
+        "max_uses": 3,
+    },
+]
+
 # Tool definitions for Claude's tool_use API
 TOOL_DEFINITIONS = [
     {
