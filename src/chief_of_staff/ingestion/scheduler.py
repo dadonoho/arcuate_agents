@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 _task: asyncio.Task | None = None
 
-SYNC_INTERVAL_SECONDS = 3600  # 1 hour
+SYNC_INTERVAL_SECONDS = 300  # 5 minutes
 
 
 async def _sync_loop():

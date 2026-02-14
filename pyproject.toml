@@ -20,6 +20,7 @@ dependencies = [
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.9",
     "tiktoken>=0.8.0",
     "discord.py>=2.3.0",
     "certifi>=2024.0.0",
