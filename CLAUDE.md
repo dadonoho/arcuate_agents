@@ -195,10 +195,11 @@ PYTHONPATH=src python -m uvicorn chief_of_staff.main:app --host 0.0.0.0 --port 8
 ```
 
 ## Next Steps (priority order)
-1. **Create first sub-agents** — lead_scorer, research_agent, etc. via Discord (agent creates YAML + deploys via code ops)
-2. **Add real-time 628 call tracking** — add Twilio voice status callbacks so calls appear instantly on dashboard
-3. **Set up Zoom integration** — configure Zoom credentials when ready, webhook code is already built
-4. **Consider removing `send_meeting_bot`** from default tools since Recall.ai isn't configured (low priority, code handles gracefully)
+1. **FIX: Switch Anthropic client to async** — `core.py` uses sync `Anthropic()` client inside async Discord loop, causing SSL deadlocks on Railway. Change to `AsyncAnthropic` + `await client.messages.create()`. This is blocking all Discord functionality.
+2. **Create first sub-agents** — lead_scorer, research_agent, etc. via Discord (agent creates YAML + deploys via code ops)
+3. **Add real-time 628 call tracking** — add Twilio voice status callbacks so calls appear instantly on dashboard
+4. **Set up Zoom integration** — configure Zoom credentials when ready, webhook code is already built
+5. **Consider removing `send_meeting_bot`** from default tools since Recall.ai isn't configured (low priority, code handles gracefully)
 
 ## Key Decisions Made
 - Discord over SMS/WhatsApp — Twilio SMS wasn't delivering to Dhiraj's phone
@@ -213,6 +214,7 @@ PYTHONPATH=src python -m uvicorn chief_of_staff.main:app --host 0.0.0.0 --port 8
 - Comprehensive tracking — all 9 files that handle communication/ingestion/webhooks now log to activity table
 
 ## Known Issues
+- **CRITICAL — Agent hangs on Railway**: The Anthropic SDK uses a sync httpx client (`self.client.messages.create()` in `core.py:73`), but it runs inside the async Discord event loop. On heavy tool-use conversations, the sync SSL read blocks the entire event loop and the process freezes. **Fix needed**: switch to `anthropic.AsyncAnthropic` and `await self.client.messages.create()` in `core.py`, or run the sync client in a thread executor. This is the #1 priority for next session.
 - Anthropic rate limits hit on heavy queries — need to handle 429s gracefully
 - ngrok has a stale session — don't touch it, runs existing Twilio voice agent for 628 number
 - macOS Python needs SSL_CERT_FILE set via certifi (handled in startup code)
