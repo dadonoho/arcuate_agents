@@ -530,9 +530,14 @@ async def execute_tool(name: str, args: dict[str, Any], agent_name: str = "chief
         if config and not config.permissions.get("can_modify_code"):
             return "Error: this agent does not have permission to edit code."
 
-        path = args["path"]
-        content = args["content"]
+        path = args.get("path", "")
+        content = args.get("content", "")
         reason = args.get("reason", "no reason given")
+
+        if not path:
+            return "Error: 'path' is required."
+        if not content:
+            return "Error: 'content' is required — provide the complete new file content."
 
         result = stage_file(path, content)
 

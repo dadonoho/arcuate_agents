@@ -98,6 +98,10 @@ async def read_file_from_github(path: str) -> dict[str, Any]:
         return {"error": f"GitHub API error {resp.status_code}: {resp.text[:300]}"}
 
     data = resp.json()
+    # GitHub returns a list for directories
+    if isinstance(data, list):
+        files = [item["name"] for item in data[:50]]
+        return {"error": f"'{path}' is a directory, not a file. Contents: {', '.join(files)}"}
     if data.get("type") != "file":
         return {"error": f"'{path}' is a {data.get('type', 'unknown')}, not a file."}
 
