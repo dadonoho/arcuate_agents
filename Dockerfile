@@ -2,17 +2,15 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy dependency spec first for layer caching
+# Copy everything needed for install + runtime
 COPY pyproject.toml .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir .
-
-# Copy application code
 COPY src/ src/
 COPY scripts/ scripts/
 COPY agents/ agents/
 COPY agent_memory/ agent_memory/
+
+# Install Python dependencies (needs src/ present for the package build)
+RUN pip install --no-cache-dir .
 
 # Data directories (Railway volume mounts here)
 RUN mkdir -p /app/data /tmp
