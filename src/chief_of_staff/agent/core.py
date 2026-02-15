@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
 import time
 from typing import Any
@@ -24,7 +26,7 @@ class Agent:
 
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
-        self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     def reload_config(self) -> None:
         """Re-read config from disk (picks up self-modifications)."""
@@ -52,8 +54,11 @@ class Agent:
         # Build system prompt from config (includes standing instructions + memory)
         system_prompt = self.config.build_system_prompt()
 
-        # Retrieve relevant context from knowledge base
-        context = get_context_for_query(user_message)
+        # Retrieve relevant context from knowledge base (sync ChromaDB — run in thread)
+        loop = asyncio.get_event_loop()
+        context = await loop.run_in_executor(
+            None, functools.partial(get_context_for_query, user_message)
+        )
         if context:
             system_prompt += f"\n\n--- RELEVANT CONTEXT FROM KNOWLEDGE BASE ---\n{context}\n--- END CONTEXT ---"
 
@@ -70,7 +75,7 @@ class Agent:
         start_time = time.time()
         for iteration in range(self.config.max_iterations):
             try:
-                response = self.client.messages.create(
+                response = await self.client.messages.create(
                     model=self.config.model,
                     max_tokens=self.config.max_tokens,
                     system=system_prompt,

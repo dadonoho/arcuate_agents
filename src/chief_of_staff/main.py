@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
     import asyncio
 
-    # Start background ingestion scheduler (hourly re-sync, non-blocking)
+    # Start background ingestion scheduler (5-minute re-sync, non-blocking)
     from chief_of_staff.ingestion.scheduler import start_scheduler
     start_scheduler()
     logger.info("Background scheduler started")
