@@ -6,13 +6,22 @@ import asyncio
 import logging
 from typing import Any
 
+import anthropic
 import discord
 
 from chief_of_staff.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Lightweight triage prompt — decides if the bot should respond
+TRIAGE_PROMPT = """Message in #{channel} from {author}: "{message}"
 
+Context: {context}
+
+You are Angie, the AI chief of staff. Should you respond? YES or NO only.
+
+YES if the message contains: angie, agent, agent1, chief of staff, cos, bot — OR asks a question — OR discusses business topics where you could add useful context.
+NO only for pure casual chat, single-word reactions, or messages clearly not needing any response."""
 
 
 class ChiefOfStaffBot(discord.Client):
@@ -21,8 +30,11 @@ class ChiefOfStaffBot(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.messages = True
+        intents.guilds = True
         super().__init__(intents=intents)
         self._agent = None
+        self._triage_client = None
 
     def _get_agent(self):
         if self._agent is None:
@@ -30,9 +42,58 @@ class ChiefOfStaffBot(discord.Client):
             self._agent = get_agent()
         return self._agent
 
+    def _get_triage_client(self):
+        if self._triage_client is None:
+            self._triage_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        return self._triage_client
+
     async def on_ready(self):
         logger.info(f"Discord bot connected as {self.user} (ID: {self.user.id})")
         logger.info(f"Connected to {len(self.guilds)} server(s)")
+        for guild in self.guilds:
+            channels = [c.name for c in guild.text_channels]
+            logger.info(f"  Server: {guild.name} — channels: {channels}")
+
+    # Keywords that always trigger a response (no LLM needed)
+    TRIGGER_WORDS = {"angie", "agent1", "agent 1", "chief of staff", "cos,", "hey bot", "hey agent"}
+
+    async def _should_respond(self, message: discord.Message, context: str) -> bool:
+        """Decide if the bot should respond. Fast keyword check first, then LLM triage."""
+        msg_lower = message.content.lower()
+
+        # Fast path: keyword match — always respond
+        for trigger in self.TRIGGER_WORDS:
+            if trigger in msg_lower:
+                logger.info(f"Keyword trigger '{trigger}' in #{getattr(message.channel, 'name', 'DM')} from {message.author}")
+                return True
+
+        # Also trigger on "agent" as a standalone word (not "agents" or "reagent")
+        import re
+        if re.search(r'\bagent\b', msg_lower):
+            logger.info(f"Keyword trigger 'agent' in #{getattr(message.channel, 'name', 'DM')} from {message.author}")
+            return True
+
+        # LLM triage for everything else
+        try:
+            client = self._get_triage_client()
+            prompt = TRIAGE_PROMPT.format(
+                channel=getattr(message.channel, "name", "DM"),
+                author=message.author.display_name,
+                message=message.content[:500],
+                context=context[:1000],
+            )
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=10,
+                messages=[{"role": "user", "content": prompt}],
+            ))
+            answer = response.content[0].text.strip().upper()
+            logger.info(f"Triage for #{getattr(message.channel, 'name', 'DM')} from {message.author}: {answer}")
+            return answer.startswith("YES")
+        except Exception as e:
+            logger.error(f"Triage call failed: {e}")
+            return False
 
     async def on_message(self, message: discord.Message):
         # Don't respond to ourselves
@@ -43,24 +104,37 @@ class ChiefOfStaffBot(discord.Client):
         if message.author.bot:
             return
 
-        # Respond to DMs or messages that mention the bot or are in a designated channel
+        content = message.content
+        if not content:
+            return
+
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mentioned = self.user in message.mentions
         channel_name = getattr(message.channel, "name", "")
-        is_agent_channel = channel_name in settings.discord_channels
-
-        if not (is_dm or is_mentioned or is_agent_channel):
-            return
 
         # Strip the bot mention from the message if present
-        content = message.content
         if is_mentioned:
             content = content.replace(f"<@{self.user.id}>", "").strip()
 
         if not content:
             return
 
-        logger.info(f"Discord message from {message.author}: {content[:100]}...")
+        # Always respond to DMs and @mentions
+        # For all other channel messages, use triage to decide
+        should_respond = is_dm or is_mentioned
+        if not should_respond:
+            # Build context for triage
+            context_lines = []
+            async for msg in message.channel.history(limit=5):
+                if msg.id != message.id:
+                    context_lines.append(f"{msg.author.display_name}: {msg.content[:200]}")
+            context = "\n".join(context_lines) if context_lines else "(no recent messages)"
+            should_respond = await self._should_respond(message, context)
+
+        if not should_respond:
+            return
+
+        logger.info(f"Discord message from {message.author} in #{channel_name}: {content[:100]}...")
 
         # Show typing indicator while processing
         async with message.channel.typing():

@@ -1,0 +1,169 @@
+"""Agent registry — loads agent definitions from YAML config files."""
+
+from __future__ import annotations
+
+import logging
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+logger = logging.getLogger(__name__)
+
+AGENTS_DIR = Path(os.environ.get("AGENTS_DIR", "./agents"))
+
+
+@dataclass
+class AgentConfig:
+    """Configuration for a single agent, loaded from YAML."""
+
+    name: str
+    display_name: str = ""
+    model: str = "claude-sonnet-4-5-20250929"
+    max_tokens: int = 4096
+    max_iterations: int = 10
+    system_prompt: str = ""
+    tools: list[str] = field(default_factory=list)
+    server_tools: list[dict[str, Any]] = field(default_factory=list)
+    permissions: dict[str, Any] = field(default_factory=dict)
+    standing_instructions: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> AgentConfig:
+        """Load agent config from a YAML file."""
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return cls(
+            name=data.get("name", path.stem),
+            display_name=data.get("display_name", data.get("name", path.stem)),
+            model=data.get("model", "claude-sonnet-4-5-20250929"),
+            max_tokens=data.get("max_tokens", 4096),
+            max_iterations=data.get("max_iterations", 10),
+            system_prompt=data.get("system_prompt", ""),
+            tools=data.get("tools", []),
+            server_tools=data.get("server_tools", []),
+            permissions=data.get("permissions", {}),
+            standing_instructions=data.get("standing_instructions", []),
+        )
+
+    def to_yaml(self, path: Path) -> None:
+        """Save agent config to a YAML file."""
+        data = {
+            "name": self.name,
+            "display_name": self.display_name,
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "max_iterations": self.max_iterations,
+            "system_prompt": self.system_prompt,
+            "tools": self.tools,
+            "server_tools": self.server_tools,
+            "permissions": self.permissions,
+            "standing_instructions": self.standing_instructions,
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        logger.info(f"Agent config saved: {path}")
+
+    def build_system_prompt(self) -> str:
+        """Build the full system prompt including standing instructions and memory."""
+        prompt = self.system_prompt
+
+        if self.standing_instructions:
+            prompt += "\n\n--- STANDING INSTRUCTIONS (self-set) ---\n"
+            for i, instruction in enumerate(self.standing_instructions, 1):
+                prompt += f"{i}. {instruction}\n"
+            prompt += "--- END STANDING INSTRUCTIONS ---"
+
+        # Inject persistent memory
+        from chief_of_staff.agent.memory import read_memory
+        memory = read_memory(self.name)
+        if memory:
+            prompt += f"\n\n--- YOUR PERSISTENT MEMORY ---\n{memory[:4000]}\n--- END MEMORY ---"
+
+        return prompt
+
+
+class AgentRegistry:
+    """Manages all agent configurations."""
+
+    def __init__(self) -> None:
+        self._agents: dict[str, AgentConfig] = {}
+        self._load_all()
+
+    def _load_all(self) -> None:
+        """Load all agent configs from the agents directory."""
+        if not AGENTS_DIR.exists():
+            logger.warning(f"Agents directory not found: {AGENTS_DIR}")
+            return
+
+        for path in AGENTS_DIR.glob("*.yaml"):
+            try:
+                config = AgentConfig.from_yaml(path)
+                self._agents[config.name] = config
+                logger.info(f"Loaded agent config: {config.name} ({config.display_name})")
+            except Exception as e:
+                logger.error(f"Failed to load agent config {path}: {e}")
+
+    def get(self, name: str) -> AgentConfig | None:
+        """Get an agent config by name. Re-reads from disk for freshness."""
+        path = AGENTS_DIR / f"{name}.yaml"
+        if path.exists():
+            try:
+                config = AgentConfig.from_yaml(path)
+                self._agents[name] = config
+                return config
+            except Exception as e:
+                logger.error(f"Failed to reload agent config {name}: {e}")
+        return self._agents.get(name)
+
+    def list_agents(self) -> list[AgentConfig]:
+        """List all registered agents."""
+        self._load_all()
+        return list(self._agents.values())
+
+    def create_agent(
+        self,
+        name: str,
+        display_name: str,
+        system_prompt: str,
+        tools: list[str] | None = None,
+        model: str = "claude-sonnet-4-5-20250929",
+    ) -> AgentConfig:
+        """Create a new agent and save its config."""
+        config = AgentConfig(
+            name=name,
+            display_name=display_name,
+            model=model,
+            system_prompt=system_prompt,
+            tools=tools or ["search_knowledge"],
+            permissions={"can_self_modify": False, "can_create_agents": False, "can_send_external": False},
+        )
+        path = AGENTS_DIR / f"{name}.yaml"
+        config.to_yaml(path)
+        self._agents[name] = config
+        logger.info(f"Created new agent: {name}")
+        return config
+
+    def update_agent_instructions(self, name: str, new_instructions: list[str]) -> AgentConfig | None:
+        """Update an agent's standing instructions and save."""
+        config = self.get(name)
+        if not config:
+            return None
+        config.standing_instructions = new_instructions
+        path = AGENTS_DIR / f"{name}.yaml"
+        config.to_yaml(path)
+        return config
+
+
+# Singleton
+_registry: AgentRegistry | None = None
+
+
+def get_registry() -> AgentRegistry:
+    global _registry
+    if _registry is None:
+        _registry = AgentRegistry()
+    return _registry

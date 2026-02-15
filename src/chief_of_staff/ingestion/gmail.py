@@ -13,11 +13,14 @@ from chief_of_staff.knowledge.store import ingest
 logger = logging.getLogger(__name__)
 
 
-def fetch_and_ingest_emails(max_results: int = 100, query: str = "", newer_than: str = "") -> int:
+def fetch_and_ingest_emails(max_results: int = 500, query: str = "", newer_than: str = "") -> int:
     """Fetch recent emails and ingest them into the knowledge base.
 
+    Paginates through all results up to max_results. Captures full email
+    context including To, From, CC, BCC, Reply-To, and thread IDs.
+
     Args:
-        max_results: Maximum number of emails to fetch.
+        max_results: Maximum number of emails to fetch (paginates automatically).
         query: Gmail search query (e.g., 'from:client@example.com').
         newer_than: Gmail newer_than filter (e.g., '1d' for last day, '2h' for last 2 hours).
 
@@ -32,16 +35,31 @@ def fetch_and_ingest_emails(max_results: int = 100, query: str = "", newer_than:
 
     logger.info(f"Fetching emails with query: '{full_query}', max_results={max_results}")
 
-    results = service.users().messages().list(
-        userId="me",
-        maxResults=max_results,
-        q=full_query,
-    ).execute()
+    # Paginate through all results
+    all_messages = []
+    page_token = None
+    while len(all_messages) < max_results:
+        batch_size = min(100, max_results - len(all_messages))
+        results = service.users().messages().list(
+            userId="me",
+            maxResults=batch_size,
+            q=full_query,
+            pageToken=page_token,
+        ).execute()
 
-    messages = results.get("messages", [])
+        batch = results.get("messages", [])
+        if not batch:
+            break
+        all_messages.extend(batch)
+
+        page_token = results.get("nextPageToken")
+        if not page_token:
+            break
+
+    logger.info(f"Found {len(all_messages)} emails matching query")
     count = 0
 
-    for msg_ref in messages:
+    for msg_ref in all_messages:
         try:
             msg = service.users().messages().get(
                 userId="me",
@@ -53,31 +71,63 @@ def fetch_and_ingest_emails(max_results: int = 100, query: str = "", newer_than:
             subject = headers.get("subject", "(no subject)")
             from_addr = headers.get("from", "unknown")
             to_addr = headers.get("to", "unknown")
+            cc_addr = headers.get("cc", "")
+            bcc_addr = headers.get("bcc", "")
+            reply_to = headers.get("reply-to", "")
             date = headers.get("date", "")
+            message_id = headers.get("message-id", "")
+            in_reply_to = headers.get("in-reply-to", "")
+            thread_id = msg.get("threadId", "")
+            labels = msg.get("labelIds", [])
 
             body = _extract_body(msg["payload"])
 
-            content = f"From: {from_addr}\nTo: {to_addr}\nDate: {date}\nSubject: {subject}\n\n{body}"
+            # Build full email context with all participants
+            content_parts = [
+                f"From: {from_addr}",
+                f"To: {to_addr}",
+            ]
+            if cc_addr:
+                content_parts.append(f"CC: {cc_addr}")
+            if bcc_addr:
+                content_parts.append(f"BCC: {bcc_addr}")
+            if reply_to:
+                content_parts.append(f"Reply-To: {reply_to}")
+            content_parts.extend([
+                f"Date: {date}",
+                f"Subject: {subject}",
+                "",
+                body,
+            ])
+            content = "\n".join(content_parts)
+
+            metadata = {
+                "from": from_addr,
+                "to": to_addr,
+                "cc": cc_addr,
+                "bcc": bcc_addr,
+                "reply_to": reply_to,
+                "date": date,
+                "subject": subject,
+                "gmail_id": msg_ref["id"],
+                "thread_id": thread_id,
+                "in_reply_to": in_reply_to,
+                "labels": ",".join(labels),
+            }
 
             ingest(
                 source="gmail",
                 source_id=msg_ref["id"],
                 title=f"Email: {subject}",
                 content=content,
-                metadata={
-                    "from": from_addr,
-                    "to": to_addr,
-                    "date": date,
-                    "subject": subject,
-                    "gmail_id": msg_ref["id"],
-                },
+                metadata=metadata,
             )
             count += 1
 
         except Exception as e:
             logger.error(f"Failed to ingest email {msg_ref['id']}: {e}")
 
-    logger.info(f"Ingested {count}/{len(messages)} emails")
+    logger.info(f"Ingested {count}/{len(all_messages)} emails")
     return count
 
 
