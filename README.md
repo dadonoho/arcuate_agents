@@ -1,105 +1,99 @@
 # Arcuate Chief of Staff Agent
 
-AI Chief of Staff for Arcuate Health — a unified knowledge + communication agent that serves as the central nervous system for the company.
+AI Chief of Staff for [Arcuate Health](https://arcuatehealth.com) — an agentic outreach company for high-end aesthetic practices. The agent ingests all company knowledge (emails, docs, call transcripts, meetings) and lets founders interact with it via Discord.
 
-## What It Does
+## Features
 
-The Chief of Staff ingests **all company information** (emails, Google Docs, call transcripts, Zoom meetings) into a searchable knowledge base and lets founders interact with it via **SMS text messages**. It can answer questions, draft documents, send communications, and dispatch meeting bots — all with full company context.
-
-**Example:** Text "Create an onboarding packet for Dr. Smith" and the agent pulls the old onboarding template from Google Docs, email chains with Dr. Smith, ElevenLabs call transcripts, and synthesizes a new packet.
-
-## Current Status
-
-### Built (this session)
-
-- **Agent Core** — Claude-powered reasoning loop with tool use (`src/chief_of_staff/agent/`)
-- **Knowledge Store** — ChromaDB vector search + SQLite metadata (`src/chief_of_staff/knowledge/`)
-- **Ingestion Layer**
-  - Gmail connector (fetch + ingest emails)
-  - Google Docs/Drive connector
-  - ElevenLabs transcript puller
-  - Zoom cloud recording ingestion (VTT transcript parser)
-  - Recall.ai meeting bot (auto-join, record, transcribe)
-  - Manual meeting transcript upload
-- **Communication Layer**
-  - Twilio SMS (send/receive — primary founder interface)
-  - Gmail send (via Google API)
-  - Voice placeholder (Twilio + ElevenLabs)
-- **FastAPI Server** with webhooks for:
-  - Twilio SMS (incoming texts from founders)
-  - Gmail push notifications (new emails)
-  - Zoom events (meeting started/ended, recording completed)
-  - Recall.ai events (bot status, transcript delivery)
-- **Setup tooling** — credential validation script, Google OAuth helper, initial ingestion script
-
-### Not Yet Done
-
-- [ ] **Deploy and test end-to-end** — run locally with real credentials, test SMS flow
-- [ ] **Twilio phone number** — need to set `TWILIO_PHONE_NUMBER` in `.env` (run `validate_credentials.py` to find available numbers)
-- [ ] **Google OAuth flow** — need to copy `credentials.json` and run `setup_google_auth.py`
-- [ ] **Zoom credentials** — need Server-to-Server OAuth app from marketplace.zoom.us
-- [ ] **Recall.ai account** — sign up and get API key (optional, for meeting bot)
-- [ ] **Voice interface** — implement Twilio Voice + ElevenLabs TTS for phone calls with the agent
-- [ ] **Scheduled ingestion** — cron/background task to periodically sync emails, docs, transcripts
-- [ ] **Conversation memory** — persistent multi-turn conversation context per founder (beyond recent SMS history)
-- [ ] **Google Calendar integration** — auto-detect upcoming meetings and dispatch bots
-- [ ] **Slack integration** — another founder interface beyond SMS
-- [ ] **Web dashboard** — view knowledge base, task history, agent activity
-- [ ] **Document output** — create Google Docs directly (not just draft in chat)
-- [ ] **The other 13 agents** — build out the full 14-agent orchestration system
-- [ ] **Inter-agent communication** — protocol for agents to delegate tasks to each other
-- [ ] **Production deployment** — Docker, cloud hosting, HTTPS, monitoring
+- **Full company knowledge base** — 500+ emails, Google Docs, ElevenLabs call transcripts, meeting notes in ChromaDB + SQLite
+- **Discord interface** — chat with the agent in Discord DMs, @mentions, or dedicated channels
+- **Email** — sends and reads email as agent1@arcuatehealth.com via Gmail API
+- **17 tools** — knowledge search, email, SMS, document drafting, meeting bots, web search
+- **Self-modification** — agent can update its own instructions, system prompt, and Discord triage behavior
+- **Code self-modification** — agent can read, edit, and deploy its own source code via GitHub API, triggering Railway auto-deploy
+- **Persistent memory** — remembers key facts, preferences, and patterns across conversations
+- **Sub-agent system** — create and delegate to specialized sub-agents, persist them via code ops
+- **Activity dashboard** — live web dashboard tracking all 22 action types across all channels
+- **Background ingestion** — syncs emails, docs, and call transcripts every 5 minutes
 
 ## Quick Start
-
-See [SETUP.md](SETUP.md) for full instructions.
 
 ```bash
 git clone https://github.com/pangal-nsgy/arcuate_agents.git
 cd arcuate_agents
 git checkout claude/mcp-chrome-extension-BW3zj
+python -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env   # Fill in your API keys
-python scripts/validate_credentials.py
-python scripts/ingest_initial.py
-uvicorn chief_of_staff.main:app --reload
+cp .env.example .env   # Fill in API keys (see below)
+python scripts/setup_google_auth.py   # OAuth flow — sign in with agent email
+python scripts/ingest_initial.py      # Initial knowledge base population
+PYTHONPATH=src uvicorn chief_of_staff.main:app --host 0.0.0.0 --port 8000
+```
+
+Dashboard: http://localhost:8000/dashboard
+
+## Required Environment Variables
+
+```env
+# Core
+ANTHROPIC_API_KEY=sk-ant-...
+DISCORD_BOT_TOKEN=...
+
+# Google OAuth (agent1@arcuatehealth.com)
+# credentials.json in repo root (from GCP Console)
+# token.json generated by setup_google_auth.py
+
+# Communication
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_PHONE_NUMBER=+1...
+ELEVENLABS_API_KEY=...
+
+# Code self-modification
+GITHUB_TOKEN=github_pat_...   # Fine-grained PAT with Contents read/write
+
+# Agent config
+CHIEF_EMAIL=agent1@arcuatehealth.com
 ```
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design diagram.
-
-## Project Structure
-
 ```
+agents/                  # Agent YAML configs (self-modifiable)
+agent_memory/            # Persistent memory per agent
 src/chief_of_staff/
-├── main.py                    # FastAPI server entry point
-├── config.py                  # Settings from .env
-├── agent/
-│   ├── core.py                # Claude reasoning loop with tool use
-│   ├── planner.py             # Multi-step task decomposition
-│   └── tools.py               # Agent tools (search, SMS, email, meetings)
-├── ingestion/
-│   ├── gmail.py               # Gmail API email ingestion
-│   ├── gdocs.py               # Google Docs/Drive ingestion
-│   ├── elevenlabs.py          # ElevenLabs transcript ingestion
-│   ├── zoom.py                # Zoom cloud recording ingestion
-│   ├── zoom_client.py         # Zoom API client (OAuth, recordings)
-│   ├── recall_bot.py          # Recall.ai meeting bot
-│   └── meetings.py            # Manual meeting transcript ingestion
-├── knowledge/
-│   ├── store.py               # Unified knowledge interface
-│   ├── vectordb.py            # ChromaDB semantic search
-│   ├── database.py            # SQLite structured metadata
-│   └── embeddings.py          # Text chunking utilities
-├── communication/
-│   ├── sms.py                 # Twilio SMS
-│   ├── email.py               # Gmail send
-│   ├── voice.py               # Voice (placeholder)
-│   └── _google_auth.py        # Google OAuth helper
-└── webhooks/
-    ├── twilio.py              # SMS webhook
-    ├── gmail.py               # Email push notifications
-    ├── zoom.py                # Zoom meeting events
-    └── recall.py              # Recall.ai bot events
+  agent/                 # Agent loop, tools (17), activity tracking (22 types), code ops, memory, registry
+  dashboard/             # Live web dashboard (API + HTML frontend)
+  communication/         # Discord bot, SMS (Twilio), email (Gmail API)
+  ingestion/             # Gmail, Google Docs, ElevenLabs, Zoom, background scheduler
+  knowledge/             # ChromaDB vector search + SQLite metadata
+  webhooks/              # Twilio, Gmail push, Zoom, Recall.ai
 ```
+
+See [CLAUDE.md](CLAUDE.md) for full architecture details, tool reference, credentials, and deployment notes.
+
+## Deployment
+
+Deployed on **Railway** with auto-deploy from GitHub pushes.
+
+- **Production**: https://ravishing-patience-production-f793.up.railway.app
+- **Dashboard**: https://ravishing-patience-production-f793.up.railway.app/dashboard
+- **Branch**: `claude/mcp-chrome-extension-BW3zj`
+
+The agent can also deploy itself — tell it in Discord to edit code and deploy, and it will commit via GitHub API and Railway auto-deploys the change.
+
+## Tools (17)
+
+| Category | Tools |
+|----------|-------|
+| Knowledge | `search_knowledge`, `list_recent_emails`, `search_meetings` |
+| Communication | `send_sms`, `send_email`, `draft_document`, `send_meeting_bot` |
+| Self-Mod | `update_own_instructions`, `update_system_prompt`, `update_triage_config` |
+| Memory | `remember`, `recall_memory` |
+| Delegation | `create_sub_agent`, `delegate_task` |
+| Code Ops | `read_own_code`, `edit_own_code`, `deploy_changes` |
+
+Plus `web_search` as a server-side tool (Anthropic built-in).
+
+## License
+
+Private — Arcuate Health internal use only.
