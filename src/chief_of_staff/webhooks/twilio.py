@@ -8,6 +8,7 @@ import uuid
 from fastapi import APIRouter, Form, Response
 
 from chief_of_staff.agent.core import get_agent
+from chief_of_staff.agent.activity import log_activity, SMS_RECEIVED, SMS_SENT, ERROR
 from chief_of_staff.communication.sms import send_sms
 from chief_of_staff.knowledge.database import get_recent_conversations, log_conversation
 
@@ -27,17 +28,23 @@ async def incoming_sms(
     Body: str = Form(...),
     MessageSid: str = Form(""),
 ) -> Response:
-    """Handle incoming SMS or WhatsApp message from Twilio.
-
-    This is the primary founder interface — message the Chief of Staff,
-    get an AI-powered response with full company context.
-    """
-    # Normalize phone number (strip whatsapp: prefix for DB lookups)
+    """Handle incoming SMS or WhatsApp message from Twilio."""
     raw_from = From
     clean_phone = _strip_whatsapp_prefix(From)
     is_whatsapp = raw_from.startswith("whatsapp:")
+    channel_type = "whatsapp" if is_whatsapp else "sms"
 
-    logger.info(f"Incoming {'WhatsApp' if is_whatsapp else 'SMS'} from {clean_phone}: {Body[:100]}...")
+    logger.info(f"Incoming {channel_type} from {clean_phone}: {Body[:100]}...")
+
+    # Track incoming message
+    log_activity(
+        agent_name="chief_of_staff",
+        action_type=SMS_RECEIVED,
+        action_detail=Body[:500],
+        channel=channel_type,
+        user_id=clean_phone,
+        metadata={"message_sid": MessageSid, "is_whatsapp": is_whatsapp},
+    )
 
     # Log the inbound message
     conv_id = str(uuid.uuid4())
@@ -57,12 +64,24 @@ async def incoming_sms(
             history.append({"role": "assistant", "content": msg["response"]})
 
     # Get agent response
-    agent = get_agent()
-    response_text = await agent.respond(
-        user_message=Body,
-        conversation_history=history[:-1],  # exclude current message (added by agent)
-        founder_phone=clean_phone,
-    )
+    try:
+        agent = get_agent()
+        response_text = await agent.respond(
+            user_message=Body,
+            conversation_history=history[:-1],
+            channel=channel_type,
+            user_id=clean_phone,
+        )
+    except Exception as e:
+        logger.error(f"Agent failed on {channel_type} from {clean_phone}: {e}")
+        log_activity(
+            agent_name="chief_of_staff",
+            action_type=ERROR,
+            action_detail=f"Agent failed on {channel_type}: {e}",
+            channel=channel_type,
+            user_id=clean_phone,
+        )
+        response_text = "Something went wrong — I'll get back to you."
 
     # Log the response
     log_conversation(
@@ -72,10 +91,18 @@ async def incoming_sms(
         message=response_text,
     )
 
-    # Send response back via the same channel (WhatsApp or SMS)
+    # Track outbound response
+    log_activity(
+        agent_name="chief_of_staff",
+        action_type=SMS_SENT,
+        action_detail=response_text[:500],
+        channel=channel_type,
+        user_id=clean_phone,
+    )
+
+    # Send response back via the same channel
     await send_sms(to=clean_phone, body=response_text)
 
-    # Return empty TwiML (we're sending the response ourselves)
     return Response(
         content='<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         media_type="text/xml",

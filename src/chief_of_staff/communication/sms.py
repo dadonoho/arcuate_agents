@@ -55,4 +55,18 @@ async def send_sms(to: str, body: str) -> str:
         sids.append(message.sid)
         logger.info(f"Message sent to {to} via {settings.messaging_channel}: SID={message.sid}")
 
+    # Track outbound SMS/WhatsApp
+    try:
+        from chief_of_staff.agent.activity import log_activity, SMS_SENT
+        log_activity(
+            agent_name="chief_of_staff",
+            action_type=SMS_SENT,
+            action_detail=f"To {to}: {body[:200]}",
+            channel=settings.messaging_channel,
+            user_id=to,
+            metadata={"sids": sids, "segments": len(segments)},
+        )
+    except Exception:
+        pass  # Don't let tracking failures break messaging
+
     return sids[0] if len(sids) == 1 else f"Sent {len(sids)} segments"

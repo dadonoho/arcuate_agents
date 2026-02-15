@@ -64,6 +64,16 @@ async def zoom_webhook(
 
     logger.info(f"Zoom webhook event: {event}")
 
+    # Track webhook
+    from chief_of_staff.agent.activity import log_activity, WEBHOOK_RECEIVED, MEETING_INGESTED
+    log_activity(
+        agent_name="chief_of_staff",
+        action_type=WEBHOOK_RECEIVED,
+        action_detail=f"Zoom: {event}",
+        channel="zoom",
+        metadata={"event": event},
+    )
+
     # Route to appropriate handler
     if event == "meeting.started":
         await _handle_meeting_started(payload)
@@ -208,6 +218,15 @@ async def _handle_recording_completed(payload: dict[str, Any]) -> None:
                 )
                 transcript_ingested = True
                 logger.info(f"Auto-ingested Zoom transcript: {topic}")
+
+                from chief_of_staff.agent.activity import log_activity, MEETING_INGESTED
+                log_activity(
+                    agent_name="chief_of_staff",
+                    action_type=MEETING_INGESTED,
+                    action_detail=f"Zoom transcript: {topic} ({duration}min)",
+                    channel="zoom",
+                    metadata={"meeting_id": str(meeting_id), "topic": topic, "host": host_email},
+                )
 
             except Exception as e:
                 logger.error(f"Failed to auto-ingest transcript for {meeting_id}: {e}")

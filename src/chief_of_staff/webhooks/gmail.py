@@ -37,8 +37,26 @@ async def gmail_push_notification(request: Request) -> dict:
         history_id = data.get("historyId", "unknown")
         logger.info(f"Gmail push: new mail for {email_address}, historyId={history_id}")
 
+    # Track webhook
+    from chief_of_staff.agent.activity import log_activity, WEBHOOK_RECEIVED, EMAIL_INGESTED
+    log_activity(
+        agent_name="chief_of_staff",
+        action_type=WEBHOOK_RECEIVED,
+        action_detail="Gmail push notification",
+        channel="gmail",
+    )
+
     # Trigger incremental sync (fetch recent unread emails)
     count = fetch_and_ingest_emails(max_results=10, query="is:unread")
     logger.info(f"Ingested {count} new emails from push notification")
+
+    if count > 0:
+        log_activity(
+            agent_name="chief_of_staff",
+            action_type=EMAIL_INGESTED,
+            action_detail=f"Push: ingested {count} new emails",
+            channel="gmail",
+            metadata={"count": count, "trigger": "push_notification"},
+        )
 
     return {"status": "ok", "emails_ingested": count}

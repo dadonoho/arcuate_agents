@@ -199,6 +199,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .action-badge.sub_agent_spawn { background: #1f3d1f; color: #86efac; }
   .action-badge.delegation { background: #2a2040; color: #a78bfa; }
   .action-badge.error { background: #3b1515; color: #fca5a5; }
+  .action-badge.sms_received { background: #1e3a5f; color: #60a5fa; }
+  .action-badge.sms_sent { background: #1a3c2a; color: #4ade80; }
+  .action-badge.call_ingested { background: #2d1f54; color: #c084fc; }
+  .action-badge.email_ingested { background: #3d2f0a; color: #fbbf24; }
+  .action-badge.doc_ingested { background: #3d2f0a; color: #fbbf24; }
+  .action-badge.meeting_ingested { background: #1f3d1f; color: #86efac; }
+  .action-badge.ingestion_sync { background: #1a2633; color: #7dd3fc; }
+  .action-badge.webhook_received { background: #1a2633; color: #7dd3fc; }
 
   .sidebar { background: var(--surface); overflow-y: auto; }
   .agent-card {
@@ -254,6 +262,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <option value="memory_write">Memory Write</option>
           <option value="sub_agent_spawn">Agent Spawn</option>
           <option value="delegation">Delegation</option>
+          <option value="sms_received">SMS In</option>
+          <option value="sms_sent">SMS Out</option>
+          <option value="call_ingested">Call Transcript</option>
+          <option value="email_ingested">Email Ingested</option>
+          <option value="doc_ingested">Doc Ingested</option>
+          <option value="meeting_ingested">Meeting Ingested</option>
+          <option value="ingestion_sync">Sync Cycle</option>
+          <option value="webhook_received">Webhook</option>
           <option value="error">Error</option>
         </select>
         <select id="filter-hours" onchange="refresh()">
@@ -304,31 +320,33 @@ async function loadStats() {
   const params = hours ? `?hours=${hours}` : '?hours=8760';
   const stats = await fetchJSON(BASE + '/stats' + params);
   const row = document.getElementById('stats-row');
+  const totalMsgs = stats.messages_received + stats.messages_sent + stats.sms_received + stats.sms_sent;
+  const totalIngested = stats.emails_ingested + stats.calls_ingested + stats.docs_ingested + stats.meetings_ingested;
   row.innerHTML = `
     <div class="stat-card messages">
       <div class="label">Messages</div>
-      <div class="value">${stats.messages_received + stats.messages_sent}</div>
-      <div class="sub">${stats.messages_received} in / ${stats.messages_sent} out</div>
+      <div class="value">${totalMsgs}</div>
+      <div class="sub">Discord: ${stats.messages_received}in/${stats.messages_sent}out &middot; SMS: ${stats.sms_received}in/${stats.sms_sent}out</div>
     </div>
     <div class="stat-card tools">
       <div class="label">Tool Uses</div>
       <div class="value">${stats.tool_uses}</div>
-      <div class="sub">${stats.delegations} delegations</div>
+      <div class="sub">${stats.knowledge_searches} KB &middot; ${stats.web_searches} web &middot; ${stats.delegations} delegated</div>
     </div>
     <div class="stat-card searches">
-      <div class="label">KB Searches</div>
-      <div class="value">${stats.knowledge_searches}</div>
-      <div class="sub">${stats.web_searches} web searches</div>
+      <div class="label">Ingested</div>
+      <div class="value">${totalIngested}</div>
+      <div class="sub">${stats.emails_ingested} emails &middot; ${stats.calls_ingested} calls &middot; ${stats.docs_ingested} docs &middot; ${stats.meetings_ingested} meetings</div>
     </div>
     <div class="stat-card agents">
-      <div class="label">Active Agents</div>
+      <div class="label">Agents</div>
       <div class="value">${stats.active_agents.length}</div>
-      <div class="sub">${stats.sub_agents_spawned} spawned</div>
+      <div class="sub">${stats.sub_agents_spawned} spawned &middot; ${stats.sync_cycles} syncs</div>
     </div>
     <div class="stat-card configs">
-      <div class="label">Config Updates</div>
-      <div class="value">${stats.config_updates}</div>
-      <div class="sub">${stats.memory_writes} memories</div>
+      <div class="label">Self-Mod</div>
+      <div class="value">${stats.config_updates + stats.memory_writes}</div>
+      <div class="sub">${stats.config_updates} config &middot; ${stats.memory_writes} memories</div>
     </div>
     <div class="stat-card errors">
       <div class="label">Errors</div>

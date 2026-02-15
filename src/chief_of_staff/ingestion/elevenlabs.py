@@ -73,6 +73,21 @@ async def fetch_and_ingest_transcripts(limit: int = 50) -> int:
                 logger.error(f"Failed to ingest transcript {conv_id}: {e}")
 
     logger.info(f"Ingested {count}/{len(conversations)} ElevenLabs transcripts")
+
+    # Track ingestion
+    if count > 0:
+        try:
+            from chief_of_staff.agent.activity import log_activity, CALL_INGESTED
+            log_activity(
+                agent_name="chief_of_staff",
+                action_type=CALL_INGESTED,
+                action_detail=f"Ingested {count} ElevenLabs call transcripts",
+                channel="elevenlabs",
+                metadata={"count": count, "total_conversations": len(conversations)},
+            )
+        except Exception:
+            pass
+
     return count
 
 

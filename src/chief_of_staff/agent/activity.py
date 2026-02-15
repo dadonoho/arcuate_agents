@@ -47,6 +47,17 @@ MEMORY_READ = "memory_read"
 SUB_AGENT_SPAWN = "sub_agent_spawn"
 DELEGATION = "delegation"
 ERROR = "error"
+# Communication
+SMS_RECEIVED = "sms_received"
+SMS_SENT = "sms_sent"
+# Ingestion
+CALL_INGESTED = "call_ingested"
+EMAIL_INGESTED = "email_ingested"
+DOC_INGESTED = "doc_ingested"
+MEETING_INGESTED = "meeting_ingested"
+INGESTION_SYNC = "ingestion_sync"
+# Webhooks
+WEBHOOK_RECEIVED = "webhook_received"
 
 
 def init_activity_tables() -> None:
@@ -189,6 +200,8 @@ def get_activity_stats(hours: int = 24) -> dict[str, Any]:
         "all_time_total": all_time["count"] if all_time else 0,
         "messages_received": by_type.get(MESSAGE_RECEIVED, 0),
         "messages_sent": by_type.get(MESSAGE_SENT, 0),
+        "sms_received": by_type.get(SMS_RECEIVED, 0),
+        "sms_sent": by_type.get(SMS_SENT, 0),
         "tool_uses": by_type.get(TOOL_USE, 0),
         "knowledge_searches": by_type.get(KNOWLEDGE_SEARCH, 0),
         "web_searches": by_type.get(WEB_SEARCH, 0),
@@ -197,6 +210,12 @@ def get_activity_stats(hours: int = 24) -> dict[str, Any]:
         "sub_agents_spawned": by_type.get(SUB_AGENT_SPAWN, 0),
         "delegations": by_type.get(DELEGATION, 0),
         "errors": by_type.get(ERROR, 0),
+        "calls_ingested": by_type.get(CALL_INGESTED, 0),
+        "emails_ingested": by_type.get(EMAIL_INGESTED, 0),
+        "docs_ingested": by_type.get(DOC_INGESTED, 0),
+        "meetings_ingested": by_type.get(MEETING_INGESTED, 0),
+        "sync_cycles": by_type.get(INGESTION_SYNC, 0),
+        "webhooks_received": by_type.get(WEBHOOK_RECEIVED, 0),
         "active_agents": [r["agent_name"] for r in agents],
         "by_type": by_type,
     }

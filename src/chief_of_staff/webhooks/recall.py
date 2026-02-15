@@ -56,6 +56,16 @@ async def recall_bot_status(request: Request) -> dict:
 
     logger.info(f"Recall bot status: {bot_id[:8]} → {status} (event: {event})")
 
+    # Track webhook
+    from chief_of_staff.agent.activity import log_activity, WEBHOOK_RECEIVED, MEETING_INGESTED
+    log_activity(
+        agent_name="chief_of_staff",
+        action_type=WEBHOOK_RECEIVED,
+        action_detail=f"Recall.ai bot {bot_id[:8]}: {status}",
+        channel="recall",
+        metadata={"bot_id": bot_id, "status": status, "event": event},
+    )
+
     if status == "done":
         # Meeting is over — ingest the full transcript
         logger.info(f"Recall bot {bot_id[:8]} done — ingesting full transcript")
@@ -68,6 +78,14 @@ async def recall_bot_status(request: Request) -> dict:
                 meeting_url=meeting_url,
             )
             logger.info(f"Recall transcript ingested: {doc_id}")
+
+            log_activity(
+                agent_name="chief_of_staff",
+                action_type=MEETING_INGESTED,
+                action_detail=f"Recall.ai transcript ingested: {doc_id}",
+                channel="recall",
+                metadata={"bot_id": bot_id, "doc_id": doc_id},
+            )
 
             # Notify founders
             await _notify_founders_transcript_ready(bot_id, doc_id)
