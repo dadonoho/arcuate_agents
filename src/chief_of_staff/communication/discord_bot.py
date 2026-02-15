@@ -136,6 +136,17 @@ class ChiefOfStaffBot(discord.Client):
 
         logger.info(f"Discord message from {message.author} in #{channel_name}: {content[:100]}...")
 
+        # Log incoming message
+        from chief_of_staff.agent.activity import log_activity, MESSAGE_RECEIVED, MESSAGE_SENT, ERROR
+        log_activity(
+            agent_name="chief_of_staff",
+            action_type=MESSAGE_RECEIVED,
+            action_detail=content[:500],
+            channel="discord",
+            user_id=f"{message.author.display_name} ({message.author.id})",
+            metadata={"channel_name": channel_name, "is_dm": is_dm, "is_mention": is_mentioned},
+        )
+
         # Show typing indicator while processing
         async with message.channel.typing():
             try:
@@ -146,7 +157,17 @@ class ChiefOfStaffBot(discord.Client):
                 response = await agent.respond(
                     user_message=content,
                     conversation_history=history,
-                    founder_phone=f"discord:{message.author.id}",
+                    channel="discord",
+                    user_id=f"discord:{message.author.id}",
+                )
+
+                # Log outgoing response
+                log_activity(
+                    agent_name="chief_of_staff",
+                    action_type=MESSAGE_SENT,
+                    action_detail=response[:500],
+                    channel="discord",
+                    user_id=f"{message.author.display_name} ({message.author.id})",
                 )
 
                 # Discord has a 2000 char limit per message
@@ -163,6 +184,13 @@ class ChiefOfStaffBot(discord.Client):
 
             except Exception as e:
                 logger.error(f"Error processing Discord message: {e}", exc_info=True)
+                log_activity(
+                    agent_name="chief_of_staff",
+                    action_type=ERROR,
+                    action_detail=f"Discord message processing failed: {e}",
+                    channel="discord",
+                    user_id=f"discord:{message.author.id}",
+                )
                 await message.reply("Something went wrong processing your message. Please try again.")
 
     async def _build_history(self, channel, limit: int = 10) -> list[dict[str, Any]]:

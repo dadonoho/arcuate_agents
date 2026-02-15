@@ -24,6 +24,7 @@ dependencies = [
     "tiktoken>=0.8.0",
     "discord.py>=2.3.0",
     "certifi>=2024.0.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

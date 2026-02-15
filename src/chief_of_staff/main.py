@@ -9,10 +9,12 @@ from fastapi import FastAPI
 
 from chief_of_staff.config import settings
 from chief_of_staff.knowledge.database import init_db
+from chief_of_staff.agent.activity import init_activity_tables
 from chief_of_staff.webhooks.twilio import router as twilio_router
 from chief_of_staff.webhooks.gmail import router as gmail_router
 from chief_of_staff.webhooks.zoom import router as zoom_router
 from chief_of_staff.webhooks.recall import router as recall_router
+from chief_of_staff.dashboard.routes import router as dashboard_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +28,8 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
     logger.info("Starting Arcuate Chief of Staff Agent...")
     init_db()
-    logger.info("Database initialized")
+    init_activity_tables()
+    logger.info("Database initialized (with activity tracking)")
 
     # Fix SSL certs on macOS (not needed on Linux/Railway)
     try:
@@ -65,6 +68,9 @@ app.include_router(gmail_router)
 app.include_router(zoom_router)
 app.include_router(recall_router)
 
+# Register dashboard
+app.include_router(dashboard_router)
+
 
 @app.get("/health")
 async def health_check():
@@ -72,17 +78,15 @@ async def health_check():
 
 
 @app.post("/api/ask")
-async def ask_agent(query: str, founder_phone: str | None = None):
-    """Direct API endpoint to ask the Chief of Staff a question.
-
-    Useful for testing and for the web dashboard (future).
-    """
+async def ask_agent(query: str, user_id: str | None = None):
+    """Direct API endpoint to ask the Chief of Staff a question."""
     from chief_of_staff.agent.core import get_agent
 
     agent = get_agent()
     response = await agent.respond(
         user_message=query,
-        founder_phone=founder_phone,
+        channel="api",
+        user_id=user_id or "api_user",
     )
     return {"response": response}
 
