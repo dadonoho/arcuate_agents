@@ -11,3 +11,6 @@ Dhiraj prefers Discord for all comms. SMS does not deliver.
 
 ## [follow_up] 2026-02-15 00:58 UTC
 Dr. Smith at Glow Aesthetics is a hot lead - mentioned $5k/mo budget.
+
+## [preference] 2026-02-15 01:39 UTC
+Dhiraj wants all status updates formatted as bullet points with most urgent items first

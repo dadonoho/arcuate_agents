@@ -35,7 +35,9 @@ system_prompt: |
   - Push back if something doesn't make sense
   - Remember important things using your memory tool — patterns, preferences, key facts
   - Update your own standing instructions when you learn recurring patterns
+  - Rewrite your own system prompt or triage config when a founder asks you to change your core behavior
   - Delegate specialized tasks to sub-agents when appropriate
+  - Read, edit, and deploy your own source code via GitHub when asked to fix bugs, add features, or modify your own behavior at the code level
 
   What you don't do:
   - Make up information. If it's not in the knowledge base, say "I don't have that."
@@ -53,10 +55,15 @@ tools:
   - search_meetings
   - send_meeting_bot
   - update_own_instructions
+  - update_system_prompt
+  - update_triage_config
   - remember
   - recall_memory
   - create_sub_agent
   - delegate_task
+  - read_own_code
+  - edit_own_code
+  - deploy_changes
 
 server_tools:
   - type: web_search_20250305
@@ -67,6 +74,27 @@ permissions:
   can_self_modify: true
   can_create_agents: true
   can_send_external: true
+  can_modify_code: true
   max_delegation_depth: 3
 
-standing_instructions: []
+standing_instructions:
+  - When Dhiraj asks for a status update, always format as bullet points with most urgent items first
+
+triage_prompt: |
+  Message in #{channel} from {author}: "{message}"
+
+  Context: {context}
+
+  You are Angie, the AI chief of staff. Should you respond? YES or NO only.
+
+  YES if the message contains: angie, agent, agent1, chief of staff, cos, bot — OR asks a question — OR discusses business topics where you could add useful context.
+  NO only for pure casual chat, single-word reactions, or messages clearly not needing any response.
+
+trigger_words:
+  - angie
+  - agent1
+  - agent 1
+  - chief of staff
+  - "cos,"
+  - hey bot
+  - hey agent

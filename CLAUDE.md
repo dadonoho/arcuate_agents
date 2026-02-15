@@ -8,11 +8,11 @@ The agent ingests all company knowledge and lets founders interact via Discord. 
 
 ### Agent System
 - **Config-driven agents** — each agent is defined in `agents/<name>.yaml` (system prompt, tools, permissions)
-- **Self-modification** — agents can update their own standing instructions via `update_own_instructions` tool
+- **Self-modification** — agents can update standing instructions, rewrite their own system prompt, and change their Discord triage/listener behavior — all via tools
 - **Persistent memory** — per-agent memory files in `agent_memory/<name>.md`, survives restarts
 - **Sub-agent spawning** — Chief of Staff can create specialized agents via `create_sub_agent` tool
 - **Task delegation** — delegates tasks to sub-agents via `delegate_task` tool
-- **Activity tracking** — every action logged to SQLite `agent_activity` table (19 action types across all channels)
+- **Activity tracking** — every action logged to SQLite `agent_activity` table (22 action types across all channels)
 - **Dashboard** — live web dashboard at `/dashboard` showing all agent activity, auto-refreshes every 5s
 
 ### Key Directories
@@ -24,8 +24,9 @@ agent_memory/            # Persistent memory per agent
 src/chief_of_staff/
   agent/
     core.py              # Agent loop (config-driven, activity-tracked)
-    tools.py             # 12 tools including self-mod, memory, delegation
-    activity.py          # Activity logging to SQLite (19 action types)
+    tools.py             # 17 tools including self-mod, memory, delegation, code ops
+    activity.py          # Activity logging to SQLite (22 action types)
+    code_ops.py          # Code self-modification via GitHub REST API
     memory.py            # Persistent memory read/write/search
     registry.py          # Agent config loading from YAML
     planner.py           # Multi-step task planner
@@ -37,7 +38,7 @@ src/chief_of_staff/
   webhooks/              # Twilio, Gmail push, Zoom, Recall.ai
 ```
 
-### Tools (12 total)
+### Tools (17 total)
 | Tool | Category | Description |
 |------|----------|-------------|
 | search_knowledge | Knowledge | Semantic search across all company data |
@@ -48,19 +49,34 @@ src/chief_of_staff/
 | draft_document | Communication | Create draft docs |
 | send_meeting_bot | Meetings | Dispatch Recall.ai bot (NOT configured — code is built but Recall.ai credentials are blank) |
 | update_own_instructions | Self-Mod | Add/remove/replace standing instructions |
+| update_system_prompt | Self-Mod | Rewrite the base system prompt entirely |
+| update_triage_config | Self-Mod | Change Discord listener behavior (triage prompt + trigger words) |
 | remember | Memory | Store persistent learnings |
 | recall_memory | Memory | Search persistent memory |
 | create_sub_agent | Delegation | Create new agent from YAML config |
 | delegate_task | Delegation | Send task to sub-agent, get result |
+| read_own_code | Code Ops | Read any file in the repo via GitHub API |
+| edit_own_code | Code Ops | Validate syntax + stage a file change |
+| deploy_changes | Code Ops | Atomic commit of all staged changes, triggers Railway deploy |
 
-### Activity Tracking (19 action types)
+### Activity Tracking (22 action types)
 All channels are tracked in the `agent_activity` SQLite table:
 - **Messages**: `message_received`, `message_sent` (Discord)
 - **SMS/WhatsApp**: `sms_received`, `sms_sent` (Twilio webhooks + outbound)
 - **Agent operations**: `tool_use`, `knowledge_search`, `web_search`, `config_update`, `memory_write`, `memory_read`
 - **Delegation**: `sub_agent_spawn`, `delegation`
 - **Ingestion**: `call_ingested` (ElevenLabs), `email_ingested` (Gmail), `doc_ingested` (GDocs), `meeting_ingested` (Zoom/Recall)
+- **Code ops**: `code_read`, `code_edit`, `code_deploy`
 - **System**: `ingestion_sync` (background scheduler), `webhook_received` (Gmail/Zoom/Recall push), `error`
+
+### Code Self-Modification
+The agent can read, edit, and deploy its own source code via the GitHub REST API:
+- **`read_own_code`** — reads any file from the repo (GitHub Contents API)
+- **`edit_own_code`** — syntax-validates (ast.parse for .py, yaml.safe_load for .yaml) and stages changes in memory
+- **`deploy_changes`** — commits all staged edits as one atomic commit via Git Data API (blobs → tree → commit → ref update), Railway auto-deploys
+- **Safety**: blocked paths (.env, credentials.json, token.json, *.db, chroma_data/, .git/, venv/), syntax validation, permission-gated (`can_modify_code`), full audit trail
+- **Requires**: `GITHUB_TOKEN` env var (fine-grained PAT with Contents read/write on arcuate_agents)
+- **Module**: `src/chief_of_staff/agent/code_ops.py`
 
 Files with tracking wired in:
 - `discord_bot.py` — message_received, message_sent, error

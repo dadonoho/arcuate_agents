@@ -13,8 +13,8 @@ from chief_of_staff.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Lightweight triage prompt — decides if the bot should respond
-TRIAGE_PROMPT = """Message in #{channel} from {author}: "{message}"
+# Fallback triage prompt — used only if agent config has no triage_prompt set
+_DEFAULT_TRIAGE_PROMPT = """Message in #{channel} from {author}: "{message}"
 
 Context: {context}
 
@@ -22,6 +22,8 @@ You are Angie, the AI chief of staff. Should you respond? YES or NO only.
 
 YES if the message contains: angie, agent, agent1, chief of staff, cos, bot — OR asks a question — OR discusses business topics where you could add useful context.
 NO only for pure casual chat, single-word reactions, or messages clearly not needing any response."""
+
+_DEFAULT_TRIGGER_WORDS = {"angie", "agent1", "agent 1", "chief of staff", "cos,", "hey bot", "hey agent"}
 
 
 class ChiefOfStaffBot(discord.Client):
@@ -54,15 +56,31 @@ class ChiefOfStaffBot(discord.Client):
             channels = [c.name for c in guild.text_channels]
             logger.info(f"  Server: {guild.name} — channels: {channels}")
 
-    # Keywords that always trigger a response (no LLM needed)
-    TRIGGER_WORDS = {"angie", "agent1", "agent 1", "chief of staff", "cos,", "hey bot", "hey agent"}
+    def _get_triage_config(self) -> tuple[set[str], str]:
+        """Load trigger words and triage prompt from agent config (live from YAML)."""
+        from chief_of_staff.agent.registry import get_registry
+        registry = get_registry()
+        config = registry.get("chief_of_staff")
+
+        if config and config.trigger_words:
+            trigger_words = set(w.lower() for w in config.trigger_words)
+        else:
+            trigger_words = _DEFAULT_TRIGGER_WORDS
+
+        if config and config.triage_prompt:
+            triage_prompt = config.triage_prompt
+        else:
+            triage_prompt = _DEFAULT_TRIAGE_PROMPT
+
+        return trigger_words, triage_prompt
 
     async def _should_respond(self, message: discord.Message, context: str) -> bool:
         """Decide if the bot should respond. Fast keyword check first, then LLM triage."""
+        trigger_words, triage_prompt = self._get_triage_config()
         msg_lower = message.content.lower()
 
         # Fast path: keyword match — always respond
-        for trigger in self.TRIGGER_WORDS:
+        for trigger in trigger_words:
             if trigger in msg_lower:
                 logger.info(f"Keyword trigger '{trigger}' in #{getattr(message.channel, 'name', 'DM')} from {message.author}")
                 return True
@@ -76,7 +94,7 @@ class ChiefOfStaffBot(discord.Client):
         # LLM triage for everything else
         try:
             client = self._get_triage_client()
-            prompt = TRIAGE_PROMPT.format(
+            prompt = triage_prompt.format(
                 channel=getattr(message.channel, "name", "DM"),
                 author=message.author.display_name,
                 message=message.content[:500],

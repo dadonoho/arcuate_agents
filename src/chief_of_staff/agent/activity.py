@@ -58,6 +58,10 @@ MEETING_INGESTED = "meeting_ingested"
 INGESTION_SYNC = "ingestion_sync"
 # Webhooks
 WEBHOOK_RECEIVED = "webhook_received"
+# Code self-modification
+CODE_READ = "code_read"
+CODE_EDIT = "code_edit"
+CODE_DEPLOY = "code_deploy"
 
 
 def init_activity_tables() -> None:
@@ -216,6 +220,9 @@ def get_activity_stats(hours: int = 24) -> dict[str, Any]:
         "meetings_ingested": by_type.get(MEETING_INGESTED, 0),
         "sync_cycles": by_type.get(INGESTION_SYNC, 0),
         "webhooks_received": by_type.get(WEBHOOK_RECEIVED, 0),
+        "code_reads": by_type.get(CODE_READ, 0),
+        "code_edits": by_type.get(CODE_EDIT, 0),
+        "code_deploys": by_type.get(CODE_DEPLOY, 0),
         "active_agents": [r["agent_name"] for r in agents],
         "by_type": by_type,
     }

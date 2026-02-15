@@ -132,6 +132,42 @@ ALL_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
             "required": ["action"],
         },
     },
+    "update_system_prompt": {
+        "name": "update_system_prompt",
+        "description": "Rewrite your own base system prompt. Use this when a founder asks you to fundamentally change your personality, role, tone, or core behavior. This replaces the entire system prompt — write the complete new version, not a diff. Your standing instructions and memory are injected separately and are NOT affected.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "new_prompt": {
+                    "type": "string",
+                    "description": "The complete new system prompt to replace the current one.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Brief explanation of why you're changing the prompt (logged for audit).",
+                },
+            },
+            "required": ["new_prompt", "reason"],
+        },
+    },
+    "update_triage_config": {
+        "name": "update_triage_config",
+        "description": "Update your Discord listener behavior — when you respond to messages. You can change the triage prompt (the LLM prompt that decides YES/NO on whether to respond) and/or the trigger words (keywords that always make you respond without LLM triage). Changes take effect on the next Discord message.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "triage_prompt": {
+                    "type": "string",
+                    "description": "New triage prompt template. Use {channel}, {author}, {message}, {context} as placeholders. Must instruct the LLM to respond YES or NO only.",
+                },
+                "trigger_words": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of keywords/phrases that always trigger a response (case-insensitive, no LLM needed). E.g. ['angie', 'chief of staff'].",
+                },
+            },
+        },
+    },
     # --- Memory tools ---
     "remember": {
         "name": "remember",
@@ -189,6 +225,42 @@ ALL_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
                 "task": {"type": "string", "description": "The task to delegate"},
             },
             "required": ["agent_name", "task"],
+        },
+    },
+    # --- Code self-modification tools ---
+    "read_own_code": {
+        "name": "read_own_code",
+        "description": "Read any file in the repo from GitHub. Use this to inspect your own source code, configs, or other project files before making changes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to repo root (e.g. 'src/chief_of_staff/agent/tools.py')"},
+            },
+            "required": ["path"],
+        },
+    },
+    "edit_own_code": {
+        "name": "edit_own_code",
+        "description": "Stage an edit to a file in the repo. The file is syntax-validated (Python/YAML) and added to a staging area. Use deploy_changes to commit and push all staged edits. Blocked paths (.env, credentials, databases) are rejected.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to repo root"},
+                "content": {"type": "string", "description": "The complete new file content"},
+                "reason": {"type": "string", "description": "Brief explanation of what changed and why (logged for audit)"},
+            },
+            "required": ["path", "content", "reason"],
+        },
+    },
+    "deploy_changes": {
+        "name": "deploy_changes",
+        "description": "Commit and push all staged code edits to GitHub as one atomic commit. Railway auto-deploys from the push. Use edit_own_code to stage files first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "commit_message": {"type": "string", "description": "Git commit message describing the changes"},
+            },
+            "required": ["commit_message"],
         },
     },
 }
@@ -326,6 +398,70 @@ async def execute_tool(name: str, args: dict[str, Any], agent_name: str = "chief
         return f"Instructions updated. Current standing instructions ({len(config.standing_instructions)}):\n" + \
                "\n".join(f"  {i}. {inst}" for i, inst in enumerate(config.standing_instructions))
 
+    # --- System prompt rewrite ---
+    elif name == "update_system_prompt":
+        from chief_of_staff.agent.activity import log_activity, CONFIG_UPDATE
+        from chief_of_staff.agent.registry import get_registry
+
+        registry = get_registry()
+        config = registry.get(agent_name)
+        if not config:
+            return f"Error: agent '{agent_name}' not found."
+        if not config.permissions.get("can_self_modify"):
+            return "Error: this agent does not have permission to self-modify."
+
+        new_prompt = args.get("new_prompt", "")
+        reason = args.get("reason", "no reason given")
+        if not new_prompt.strip():
+            return "Error: new_prompt cannot be empty."
+
+        old_length = len(config.system_prompt)
+        registry.update_agent_system_prompt(agent_name, new_prompt)
+
+        log_activity(
+            agent_name=agent_name,
+            action_type=CONFIG_UPDATE,
+            action_detail=f"update_system_prompt: {reason}",
+            input_summary=f"old_length={old_length}, new_length={len(new_prompt)}",
+            output_summary=new_prompt[:500],
+        )
+        return f"System prompt rewritten ({old_length} → {len(new_prompt)} chars). Reason: {reason}. Takes effect on next message."
+
+    # --- Triage config update ---
+    elif name == "update_triage_config":
+        from chief_of_staff.agent.activity import log_activity, CONFIG_UPDATE
+        from chief_of_staff.agent.registry import get_registry
+
+        registry = get_registry()
+        config = registry.get(agent_name)
+        if not config:
+            return f"Error: agent '{agent_name}' not found."
+        if not config.permissions.get("can_self_modify"):
+            return "Error: this agent does not have permission to self-modify."
+
+        new_triage = args.get("triage_prompt")
+        new_triggers = args.get("trigger_words")
+
+        if new_triage is None and new_triggers is None:
+            return "Error: provide at least one of triage_prompt or trigger_words."
+
+        changes = []
+        if new_triage is not None:
+            changes.append(f"triage_prompt updated ({len(new_triage)} chars)")
+        if new_triggers is not None:
+            changes.append(f"trigger_words updated ({len(new_triggers)} words: {new_triggers})")
+
+        registry.update_agent_triage_config(agent_name, new_triage, new_triggers)
+
+        log_activity(
+            agent_name=agent_name,
+            action_type=CONFIG_UPDATE,
+            action_detail=f"update_triage_config: {', '.join(changes)}",
+            input_summary=str(args)[:500],
+            output_summary=str(changes),
+        )
+        return f"Triage config updated: {', '.join(changes)}. Takes effect on next Discord message."
+
     # --- Memory tools ---
     elif name == "remember":
         from chief_of_staff.agent.activity import log_activity, MEMORY_WRITE
@@ -358,6 +494,106 @@ async def execute_tool(name: str, args: dict[str, Any], agent_name: str = "chief
         if not results:
             return "No matching memories found."
         return "\n---\n".join(results)
+
+    # --- Code self-modification tools ---
+    elif name == "read_own_code":
+        from chief_of_staff.agent.activity import log_activity, CODE_READ
+        from chief_of_staff.agent.registry import get_registry
+        from chief_of_staff.agent.code_ops import read_file_from_github
+
+        registry = get_registry()
+        config = registry.get(agent_name)
+        if config and not config.permissions.get("can_modify_code"):
+            return "Error: this agent does not have permission to read code."
+
+        path = args["path"]
+        result = await read_file_from_github(path)
+
+        log_activity(
+            agent_name=agent_name,
+            action_type=CODE_READ,
+            action_detail=path,
+            output_summary=f"{len(result.get('content', ''))} chars" if "content" in result else result.get("error", ""),
+        )
+
+        if "error" in result:
+            return f"Error: {result['error']}"
+        return f"File: {path} ({len(result['content'])} chars)\n\n{result['content']}"
+
+    elif name == "edit_own_code":
+        from chief_of_staff.agent.activity import log_activity, CODE_EDIT
+        from chief_of_staff.agent.registry import get_registry
+        from chief_of_staff.agent.code_ops import stage_file, get_staged_summary
+
+        registry = get_registry()
+        config = registry.get(agent_name)
+        if config and not config.permissions.get("can_modify_code"):
+            return "Error: this agent does not have permission to edit code."
+
+        path = args["path"]
+        content = args["content"]
+        reason = args.get("reason", "no reason given")
+
+        result = stage_file(path, content)
+
+        log_activity(
+            agent_name=agent_name,
+            action_type=CODE_EDIT,
+            action_detail=f"{path}: {reason}",
+            input_summary=f"{len(content)} chars",
+            output_summary=result,
+        )
+
+        return f"{result}\n\n{get_staged_summary()}"
+
+    elif name == "deploy_changes":
+        from chief_of_staff.agent.activity import log_activity, CODE_DEPLOY
+        from chief_of_staff.agent.registry import get_registry
+        from chief_of_staff.agent.code_ops import deploy_changes as _deploy, get_staged_summary
+
+        registry = get_registry()
+        config = registry.get(agent_name)
+        if config and not config.permissions.get("can_modify_code"):
+            return "Error: this agent does not have permission to deploy code."
+
+        commit_msg = args["commit_message"]
+
+        try:
+            result = await _deploy(commit_msg)
+        except Exception as e:
+            log_activity(
+                agent_name=agent_name,
+                action_type=CODE_DEPLOY,
+                action_detail=f"FAILED: {e}",
+                input_summary=commit_msg,
+            )
+            return f"Error deploying: {e}"
+
+        if "error" in result:
+            log_activity(
+                agent_name=agent_name,
+                action_type=CODE_DEPLOY,
+                action_detail=f"FAILED: {result['error']}",
+                input_summary=commit_msg,
+            )
+            return f"Error: {result['error']}"
+
+        log_activity(
+            agent_name=agent_name,
+            action_type=CODE_DEPLOY,
+            action_detail=f"commit {result['commit_sha'][:8]}",
+            input_summary=commit_msg,
+            output_summary=f"Deployed {len(result['files'])} file(s): {result['files']}",
+            metadata={"commit_sha": result["commit_sha"], "files": result["files"]},
+        )
+
+        return (
+            f"Deployed successfully!\n"
+            f"Commit: {result['commit_sha'][:8]}\n"
+            f"Files: {', '.join(result['files'])}\n"
+            f"Message: {result['message']}\n"
+            f"Railway will auto-deploy this commit."
+        )
 
     # --- Delegation tools ---
     elif name == "create_sub_agent":

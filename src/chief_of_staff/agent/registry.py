@@ -29,6 +29,8 @@ class AgentConfig:
     server_tools: list[dict[str, Any]] = field(default_factory=list)
     permissions: dict[str, Any] = field(default_factory=dict)
     standing_instructions: list[str] = field(default_factory=list)
+    triage_prompt: str = ""
+    trigger_words: list[str] = field(default_factory=list)
 
     @classmethod
     def from_yaml(cls, path: Path) -> AgentConfig:
@@ -46,6 +48,8 @@ class AgentConfig:
             server_tools=data.get("server_tools", []),
             permissions=data.get("permissions", {}),
             standing_instructions=data.get("standing_instructions", []),
+            triage_prompt=data.get("triage_prompt", ""),
+            trigger_words=data.get("trigger_words", []),
         )
 
     def to_yaml(self, path: Path) -> None:
@@ -61,6 +65,8 @@ class AgentConfig:
             "server_tools": self.server_tools,
             "permissions": self.permissions,
             "standing_instructions": self.standing_instructions,
+            "triage_prompt": self.triage_prompt,
+            "trigger_words": self.trigger_words,
         }
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
@@ -153,6 +159,31 @@ class AgentRegistry:
         if not config:
             return None
         config.standing_instructions = new_instructions
+        path = AGENTS_DIR / f"{name}.yaml"
+        config.to_yaml(path)
+        return config
+
+    def update_agent_system_prompt(self, name: str, new_prompt: str) -> AgentConfig | None:
+        """Update an agent's base system prompt and save."""
+        config = self.get(name)
+        if not config:
+            return None
+        config.system_prompt = new_prompt
+        path = AGENTS_DIR / f"{name}.yaml"
+        config.to_yaml(path)
+        return config
+
+    def update_agent_triage_config(
+        self, name: str, triage_prompt: str | None = None, trigger_words: list[str] | None = None
+    ) -> AgentConfig | None:
+        """Update an agent's triage prompt and/or trigger words and save."""
+        config = self.get(name)
+        if not config:
+            return None
+        if triage_prompt is not None:
+            config.triage_prompt = triage_prompt
+        if trigger_words is not None:
+            config.trigger_words = trigger_words
         path = AGENTS_DIR / f"{name}.yaml"
         config.to_yaml(path)
         return config
